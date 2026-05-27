@@ -1,5 +1,6 @@
-import { xdr, scValToNative, Address } from '@stellar/stellar-sdk';
+import { xdr, scValToNative } from '@stellar/stellar-sdk';
 import { getContractAbi, decodeArgs, renderHuman } from './registry';
+import { parseInvokeHostFunction } from './xdr-parser';
 import { prisma } from '../db';
 
 export interface DecodedTransaction {
@@ -13,45 +14,25 @@ export interface DecodedTransaction {
  * Decode a raw transaction XDR into human-readable form.
  */
 export async function decodeTransaction(rawXdr: string): Promise<DecodedTransaction> {
-  let envelope: xdr.TransactionEnvelope;
+  const parsed = parseInvokeHostFunction(rawXdr);
+  if (!parsed) {
+    return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
+  }
+
+  const { contractId: contractAddress, functionName } = parsed;
+
+  // Re-parse raw args as xdr.ScVal[] for the existing registry helpers
+  let rawArgs: xdr.ScVal[];
   try {
-    envelope = xdr.TransactionEnvelope.fromXDR(rawXdr, 'base64');
+    const envelope = xdr.TransactionEnvelope.fromXDR(rawXdr, 'base64');
+    const ops = envelope.switch().name === 'envelopeTypeTx'
+      ? envelope.v1().tx().operations()
+      : envelope.v0().tx().operations();
+    const invokeOp = ops.find((op) => op.body().switch().name === 'invokeHostFunction')!;
+    rawArgs = invokeOp.body().invokeHostFunctionOp().hostFunction().invokeContract().args();
   } catch {
-    return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
+    rawArgs = [];
   }
-
-  // Determine which arm is active and extract operations
-  let ops: xdr.Operation[];
-  try {
-    const switchName = envelope.switch().name;
-    if (switchName === 'envelopeTypeTx') {
-      ops = envelope.v1().tx().operations();
-    } else if (switchName === 'envelopeTypeTxV0') {
-      ops = envelope.v0().tx().operations();
-    } else {
-      return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
-    }
-  } catch {
-    return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
-  }
-
-  const invokeOp = ops.find(
-    (op) => op.body().switch().name === 'invokeHostFunction'
-  );
-
-  if (!invokeOp) {
-    return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
-  }
-
-  const hostFn = invokeOp.body().invokeHostFunctionOp().hostFunction();
-  if (hostFn.switch().name !== 'hostFunctionTypeInvokeContract') {
-    return { contractAddress: null, functionName: null, functionArgs: null, humanReadable: null };
-  }
-
-  const invokeArgs = hostFn.invokeContract();
-  const contractAddress = Address.fromScAddress(invokeArgs.contractAddress()).toString();
-  const functionName = invokeArgs.functionName().toString();
-  const rawArgs = invokeArgs.args();
 
   const abi = await getContractAbi(contractAddress);
   if (!abi) {
@@ -59,7 +40,7 @@ export async function decodeTransaction(rawXdr: string): Promise<DecodedTransact
   }
 
   const contract = await prisma.contract.findUnique({ where: { address: contractAddress } });
-  const decoded = decodeArgs(functionName, rawArgs, abi);
+  const decoded = decodeArgs(functionName, rawArgs, abi, contract?.tokenDecimals ?? undefined);
   const human = decoded
     ? renderHuman(functionName, decoded, abi, contract?.name, contract?.tokenDecimals ?? undefined)
     : `Called ${functionName} on ${contract?.name ?? contractAddress}`;

@@ -45,11 +45,10 @@ async function retry<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-async function fetchEventsPage(startLedger: number, endLedger: number, cursor?: string) {
+async function fetchEventsPage(startLedger: number, cursor?: string) {
   return retry(() =>
     rpc.getEvents({
       startLedger,
-      endLedger,
       filters: [{ type: 'contract' }],
       limit: EVENT_PAGE_SIZE,
       cursor,
@@ -65,7 +64,7 @@ export async function fetchEvents(startLedger: number, endLedger: number): Promi
   let cursor: string | undefined;
 
   while (true) {
-    const response = await fetchEventsPage(startLedger, endLedger, cursor);
+    const response = await fetchEventsPage(startLedger, cursor);
     const page = (response.events ?? []) as any[];
 
     if (!page.length) {
@@ -79,7 +78,7 @@ export async function fetchEvents(startLedger: number, endLedger: number): Promi
         transactionHash: String(e.txHash ?? ''),
         ledger: Number(e.ledger),
         ledgerCloseTime: new Date(e.ledgerClosedAt ?? Date.now()),
-        topics: Array.isArray(e.topic) ? e.topic.map((t) => t.toXDR('base64')) : [],
+        topics: Array.isArray(e.topic) ? e.topic.map((t: any) => t.toXDR('base64')) : [],
         data: e.value?.toXDR ? e.value.toXDR('base64') : String(e.value ?? ''),
       }));
 

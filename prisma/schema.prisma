@@ -84,6 +84,47 @@ model IndexerState {
   updatedAt     DateTime @updatedAt
 }
 
+// Bidirectional mapping: classic Stellar asset ↔ SAC contract address
+model SacMapping {
+  id           String   @id @default(cuid())
+  // Classic asset fields
+  assetCode    String   // e.g. "USDC"
+  assetIssuer  String?  // null for XLM (native)
+  assetType    String   // "native" | "credit_alphanum4" | "credit_alphanum12"
+  // Soroban side
+  sacAddress   String   @unique  // derived C-address of the SAC contract
+  // Metadata
+  firstSeenLedger Int?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  ammPools     AmmPool[]
+
+  @@unique([assetCode, assetIssuer])
+  @@index([sacAddress])
+  @@index([assetCode])
+}
+
+// AMM pool that uses one or more SAC-wrapped assets
+model AmmPool {
+  id              String   @id @default(cuid())
+  poolAddress     String   @unique  // Soroban contract address of the pool
+  poolType        String   @default("constant_product")  // constant_product | stable
+  // The two assets in the pool (at least one is a SAC)
+  assetAAddress   String   // SAC address or native token address
+  assetBAddress   String
+  // Reverse links to SacMapping (nullable — one side may be a non-SAC token)
+  sacMappingAId   String?
+  sacMappingBId   String?
+  sacMappingA     SacMapping? @relation(fields: [sacMappingAId], references: [id])
+  firstSeenLedger Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([assetAAddress])
+  @@index([assetBAddress])
+}
+
 model FailedItem {
   id          String   @id @default(cuid())
   itemType    String   // "transaction" | "event"

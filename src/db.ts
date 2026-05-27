@@ -1,20 +1,21 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from './config';
 
-const logLevel = process.env.NODE_ENV === 'development'
-  ? (['error', 'warn'] as ('error' | 'warn')[])
-  : (['error'] as ('error')[]);
+const logLevel = config.nodeEnv === 'development'
+  ? (['error', 'warn'] as const)
+  : (['error'] as const);
 
-/** Primary instance — used for all writes (indexer). */
+/** Primary write client — uses the active profile's database cluster. */
 export const prismaWrite = new PrismaClient({
   log: logLevel,
+  datasources: { db: { url: config.databaseUrl } },
 });
 
-/** Read-replica instance — used for all API reads. Falls back to primary if READ_REPLICA_URL is unset. */
+/** Read-replica client — uses the active profile's replica (falls back to primary). */
 export const prismaRead = new PrismaClient({
   log: logLevel,
   datasources: { db: { url: config.readReplicaUrl } },
 });
 
-/** @deprecated Import prismaWrite or prismaRead explicitly. */
+/** @deprecated Use prismaWrite or prismaRead explicitly. */
 export const prisma = prismaWrite;

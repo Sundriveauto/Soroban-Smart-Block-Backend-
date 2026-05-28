@@ -17,22 +17,9 @@ export async function processLedgerRange(start: number, end: number): Promise<vo
   const events = await fetchEvents(start, end);
 
   for (const event of events) {
-    // Upsert the Ledger row before writing transactions/events (FK constraint)
-    await prisma.ledger.upsert({
-      where: { sequence: event.ledgerSequence },
-      update: {},
-      create: {
-        sequence: event.ledgerSequence,
-        hash: '',               // hash not available from event stream; filled in if known
-        closeTime: event.ledgerCloseTime,
-      },
-    });
-
-    await prisma.contract.upsert({
-      where: { address: event.contractId },
-      update: {},
-      create: { address: event.contractId },
-    });
+    // Serialised upserts — prevents duplicate-key races from parallel workers
+    await barrierUpsertLedger(event.ledgerSequence, event.ledgerCloseTime);
+    await barrierUpsertContract(event.contractId);
 
     const existingTx = await prisma.transaction.findUnique({ where: { hash: event.transactionHash } });
     if (!existingTx) {

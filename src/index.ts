@@ -10,7 +10,9 @@ import { prismaWrite as prisma } from './db';
 import { startIndexerService } from './indexer/indexer';
 import { tieredRateLimit } from './middleware/rateLimit';
 import { replicaGuard } from './middleware/replicaGuard';
+import { coldStorageRouter } from './middleware/coldStorageRouter';
 import { swaggerSpec } from './indexer/swaggerSpec';
+import { attachWebSocketServer } from './ws/eventBroadcaster';
 
 const app = express();
 
@@ -20,6 +22,9 @@ app.use(morgan('dev'));
 app.use(express.json());
 app.use(tieredRateLimit);
 app.use(replicaGuard);
+
+// #134: Cold storage routing for deep history queries
+app.use(coldStorageRouter);
 
 // Interactive API docs
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));

@@ -43,9 +43,26 @@ model Contract {
 
   transactions Transaction[]
   events       Event[]
-  sessionAuthorizations SessionAuthorization[] @relation(name: "SessionAuthorizations")
+  wasmUpgrades WasmUpgradeHistory[]
 
   @@index([address])
+}
+
+// WASM bytecode upgrade history for contract version lineage
+model WasmUpgradeHistory {
+  id              String   @id @default(cuid())
+  contractAddress String
+  previousHash    String?  // hash before upgrade (null for initial deployment)
+  newHash         String   // hash after upgrade
+  ledgerSequence  Int      // ledger where upgrade occurred
+  ledgerCloseTime DateTime // timestamp of upgrade
+  transactionHash String?  // tx that triggered the upgrade
+  createdAt       DateTime @default(now())
+
+  contract Contract @relation(fields: [contractAddress], references: [address])
+
+  @@index([contractAddress, ledgerSequence])
+  @@index([ledgerSequence])
 }
 
 model Transaction {
@@ -63,6 +80,7 @@ model Transaction {
   feeCharged      String?
   sorobanResources Json?   // #48: CPU, memory, ledger footprint metrics
   failureReason   String?  // #49: human-readable failure explanation
+  flashLoanAlert  Boolean  @default(false) // #137: flash loan attack detected
   createdAt       DateTime @default(now())
 
   ledger   Ledger    @relation(fields: [ledgerSequence], references: [sequence])
@@ -128,23 +146,38 @@ model EventDefinition {
   @@index([contractAddress])
 }
 
-model SessionAuthorization {
-  id                String   @id @default(cuid())
-  eventId           String?  @unique
-  contractAddress   String
-  hotSigner         String
-  authorizationType String
-  startLedger       Int
-  expiryLedger      Int
-  allocatedBlocks   Int
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+// Privacy-shielded transfer tracking for zero-knowledge privacy pools
+model ShieldedTransfer {
+  id              String   @id @default(cuid())
+  transactionHash String
+  contractAddress String   // privacy pool contract
+  fromAddress     String?  // null if shielded
+  toAddress       String?  // null if shielded
+  amount          String?  // null if confidential
+  isConfidential   Boolean  @default(true)
+  ledgerSequence  Int
+  ledgerCloseTime DateTime
+  createdAt       DateTime @default(now())
 
-  contract Contract? @relation(fields: [contractAddress], references: [address], name: "SessionAuthorizations")
+  @@index([transactionHash])
+  @@index([contractAddress, ledgerSequence])
+}
 
-  @@index([contractAddress])
-  @@index([hotSigner])
-  @@index([expiryLedger])
+// ZKP verification event tracking
+model ZkpVerificationEvent {
+  id              String   @id @default(cuid())
+  transactionHash String
+  contractAddress String   // ZKP verifier contract
+  proofType       String   // snark | stark | groth16 | etc
+  publicInputHash String   // hash of public inputs
+  verificationResult String // verified | failed
+  certaintyPercent Float?   // cryptographic certainty level
+  ledgerSequence  Int
+  ledgerCloseTime DateTime
+  createdAt       DateTime @default(now())
+
+  @@index([transactionHash])
+  @@index([contractAddress, ledgerSequence])
 }
 
 model IndexerState {
@@ -211,6 +244,40 @@ model VerificationJob {
 
   @@index([contractAddress])
   @@index([status])
+}
+
+// Persistent contract state key tracking for eviction monitoring (#57, #58)
+model ContractState {
+  id                String   @id @default(cuid())
+  contractAddress   String
+  ledgerKey         String   // base64 XDR of the LedgerKey
+  keyType           String   // "contractData" | "contractCode" | "account"
+  status            String   @default("Live")  // "Live" | "Archived" | "Dead"
+  liveUntilLedgerSeq Int?    // from TTL entry; null = unknown
+  lastSeenLedger    Int
+  restoredAtLedger  Int?     // set when status transitions back to Live
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([contractAddress, ledgerKey])
+  @@index([contractAddress])
+  @@index([status])
+  @@index([liveUntilLedgerSeq])
+}
+
+// Log of RestoreFootprintOp restorations (#58)
+model RestorationLog {
+  id              String   @id @default(cuid())
+  transactionHash String   @unique
+  sourceAccount   String
+  ledgerSequence  Int
+  ledgerCloseTime DateTime
+  feeCharged      String?
+  restoredKeys    Json     // array of { ledgerKey, contractAddress }
+  createdAt       DateTime @default(now())
+
+  @@index([sourceAccount])
+  @@index([ledgerSequence])
 }
 
 model FailedItem {
@@ -293,3 +360,161 @@ model SignerSnapshot {
   @@index([ledgerSequence])
   @@index([passed])
 }
+
+// Institutional treasury wallet multi-sig auditor
+model TreasuryWallet {
+  id                String   @id @default(cuid())
+  address           String   @unique
+  name              String
+  requiredThreshold Int      // minimum signature weight required
+  totalSigners       Int      // total number of signers
+  adminEmail        String?  // for alert notifications
+  lastAuditLedger   Int      @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  auditSnapshots    TreasuryAuditSnapshot[]
+
+  @@index([address])
+}
+
+// Periodic audit snapshot of treasury wallet safety metrics
+model TreasuryAuditSnapshot {
+  id                String   @id @default(cuid())
+  treasuryId        String
+  ledgerSequence    Int
+  ledgerCloseTime   DateTime
+  // Balance tracking
+  totalBalance      String   // in stroops
+  balanceThreshold  String   // minimum safe balance
+  balanceHealthy    Boolean  // totalBalance >= balanceThreshold
+  // Multi-sig configuration
+  activeSigners     Int      // current active signers
+  thresholdMet      Boolean  // activeSigners >= requiredThreshold
+  configurationChanged Boolean @default(false)
+  // Alert status
+  alertSent         Boolean  @default(false)
+  alertReason       String?  // "low_balance" | "config_change" | "signer_change"
+  createdAt         DateTime @default(now())
+
+  treasury          TreasuryWallet @relation(fields: [treasuryId], references: [id])
+
+  @@index([treasuryId])
+  @@index([ledgerSequence])
+  @@index([alertSent])
+}
+
+// OFAC sanctioned address registry
+model SanctionedAddress {
+  id              String   @id @default(cuid())
+  address         String   @unique
+  name            String?
+  jurisdiction    String?  // country/region
+  listSource      String   // "OFAC" | "EU" | "UN" | "custom"
+  addedAt         DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  complianceFlags ComplianceFlag[]
+
+  @@index([address])
+  @@index([listSource])
+}
+
+// Compliance flag on transactions/accounts
+model ComplianceFlag {
+  id                String   @id @default(cuid())
+  transactionHash   String?  // null if flagging an account
+  sourceAccount     String?
+  destinationAccount String?
+  sanctionedAddressId String
+  flagType          String   // "sender_sanctioned" | "receiver_sanctioned" | "both"
+  severity          String   // "high" | "medium" | "low"
+  reviewed          Boolean  @default(false)
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  sanctionedAddress SanctionedAddress @relation(fields: [sanctionedAddressId], references: [id])
+
+  @@index([transactionHash])
+  @@index([sourceAccount])
+  @@index([destinationAccount])
+  @@index([reviewed])
+  @@index([severity])
+}
+
+// Tax lot for cost-basis tracking (IRS Form 8949)
+model TaxLot {
+  id              String   @id @default(cuid())
+  walletAddress   String
+  assetSymbol     String   // e.g., "USDC", "XLM"
+  quantity        String   // decimal string
+  costBasisPerUnit String  // in USD or reference currency
+  totalCostBasis  String   // quantity * costBasisPerUnit
+  acquisitionDate DateTime
+  disposalDate    DateTime?
+  disposalPrice   String?  // price per unit at disposal
+  gainLoss        String?  // (disposalPrice - costBasisPerUnit) * quantity
+  transactionHash String?  // link to original tx
+  createdAt       DateTime @default(now())
+
+  @@index([walletAddress])
+  @@index([assetSymbol])
+  @@index([acquisitionDate])
+  @@index([disposalDate])
+}
+
+// Tax export job for Form 8949 CSV generation
+model TaxExportJob {
+  id              String   @id @default(cuid())
+  walletAddress   String
+  taxYear         Int
+  status          String   @default("pending")  // pending | processing | completed | failed
+  filePath        String?  // path to generated CSV
+  totalLots       Int?
+  totalGain       String?  // sum of all gains
+  totalLoss       String?  // sum of all losses
+  errorMsg        String?
+  createdAt       DateTime @default(now())
+  completedAt     DateTime?
+
+  @@index([walletAddress])
+  @@index([taxYear])
+  @@index([status])
+}
+
+// i18n translation dictionary
+model TranslationKey {
+  id              String   @id @default(cuid())
+  key             String   @unique  // e.g., "transaction.swap_description"
+  defaultText     String   // English template with {placeholders}
+  context         String?  // usage context for translators
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  translations    Translation[]
+
+  @@index([key])
+}
+
+// Translated text for a specific language
+model Translation {
+  id              String   @id @default(cuid())
+  keyId           String
+  language        String   // e.g., "es", "ko", "fr"
+  translatedText  String   // translated template with {placeholders}
+  approvedBy      String?  // translator/reviewer
+  approvedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  key             TranslationKey @relation(fields: [keyId], references: [id])
+
+  @@unique([keyId, language])
+  @@index([language])
+}
+
+
+
+

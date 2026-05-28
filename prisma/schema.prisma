@@ -317,3 +317,44 @@ model TreasuryAuditSnapshot {
   @@index([alertSent])
 }
 
+// OFAC sanctioned address registry
+model SanctionedAddress {
+  id              String   @id @default(cuid())
+  address         String   @unique
+  name            String?
+  jurisdiction    String?  // country/region
+  listSource      String   // "OFAC" | "EU" | "UN" | "custom"
+  addedAt         DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  complianceFlags ComplianceFlag[]
+
+  @@index([address])
+  @@index([listSource])
+}
+
+// Compliance flag on transactions/accounts
+model ComplianceFlag {
+  id                String   @id @default(cuid())
+  transactionHash   String?  // null if flagging an account
+  sourceAccount     String?
+  destinationAccount String?
+  sanctionedAddressId String
+  flagType          String   // "sender_sanctioned" | "receiver_sanctioned" | "both"
+  severity          String   // "high" | "medium" | "low"
+  reviewed          Boolean  @default(false)
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  notes             String?
+  createdAt         DateTime @default(now())
+
+  sanctionedAddress SanctionedAddress @relation(fields: [sanctionedAddressId], references: [id])
+
+  @@index([transactionHash])
+  @@index([sourceAccount])
+  @@index([destinationAccount])
+  @@index([reviewed])
+  @@index([severity])
+}
+
+

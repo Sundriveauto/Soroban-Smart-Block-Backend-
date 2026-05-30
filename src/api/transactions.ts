@@ -16,6 +16,7 @@ const TX_SELECT = {
   feeCharged: true,
   sorobanResources: true,  // #48
   failureReason: true,     // #49
+  freezeViolation: true,   // CAP-0077
 };
 
 const listSchema = z.object({

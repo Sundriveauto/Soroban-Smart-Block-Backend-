@@ -82,6 +82,7 @@ model Transaction {
   failureReason   String?  // #49: human-readable failure explanation
   flashLoanAlert  Boolean  @default(false) // #137: flash loan attack detected
   reentrantAlert  Boolean  @default(false) // re-entrancy / drain attack detected
+  freezeViolation Boolean  @default(false) // CAP-0077: touches a consensus-frozen ledger key
   createdAt       DateTime @default(now())
 
   ledger   Ledger    @relation(fields: [ledgerSequence], references: [sequence])

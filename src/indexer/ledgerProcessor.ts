@@ -11,6 +11,7 @@ import { inspectSignature } from './signatureInspector';
 import { detectContention } from './contention';
 import { analyseCallTrace, storeReentrancyAlert } from './reentrancy-detector';
 import { parseCallTrace } from './call-trace';
+import { scanForFrozenKeys, recordFreezeViolation } from './freeze-scanner';
 import { xdr } from '@stellar/stellar-sdk';
 
 /**
@@ -89,6 +90,26 @@ export async function processLedgerRange(start: number, end: number): Promise<vo
       // Inspect for secp256r1 / passkey signatures (non-blocking)
       if (rawXdr) {
         inspectSignature(event.transactionHash, event.ledgerSequence, rawXdr).catch(() => {});
+      }
+
+      // CAP-0077: Consensus Asset-Freeze — scan footprint for frozen ledger keys (non-blocking)
+      if (rawXdr) {
+        scanForFrozenKeys(rawXdr).then(({ frozen, matchedKeys }) => {
+          if (frozen) {
+            console.warn(
+              `[freeze-scanner] Transaction ${event.transactionHash} touches ${matchedKeys.length} frozen key(s)`,
+            );
+            return recordFreezeViolation(
+              event.transactionHash,
+              decoded.contractAddress ?? null,
+              event.ledgerSequence,
+              event.ledgerCloseTime,
+              matchedKeys,
+            );
+          }
+        }).catch((err) =>
+          console.warn(`[freeze-scanner] scan failed for ${event.transactionHash}:`, err),
+        );
       }
 
       // Re-entrancy / drain attack detection (non-blocking)

@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { prisma } from '../db';
 import { extractArchive, compileSandboxed, hashFile, cleanupDir, extractSourceFiles } from './compiler';
+import { decompileWasm } from '../indexer/wasm-decompiler';
 
 export const verifyRouter = Router();
 
@@ -149,3 +150,61 @@ async function fetchOnChainHash(contractAddress: string): Promise<string> {
 
   return Buffer.from(wasmHash).toString('hex');
 }
+
+// ── Wasm Byte-Decompiler endpoint ─────────────────────────────────────────────
+
+// Accept raw .wasm uploads up to 10 MB for decompile analysis
+const wasmUpload = multer({
+  dest: os.tmpdir(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const ok = file.originalname.endsWith('.wasm') || file.mimetype === 'application/wasm';
+    cb(ok ? null : new Error('Only .wasm files are accepted'), ok);
+  },
+});
+
+/**
+ * POST /verify/decompile
+ *
+ * Upload a raw compiled Wasm binary.  The endpoint:
+ *   1. Parses the binary into an analytical index of distinct opcode strings.
+ *   2. Matches the opcode sequence against known vulnerable contract templates.
+ *   3. Returns a warning if malicious backdoors or admin-drain patterns are found.
+ *
+ * Multipart field name: "wasm"
+ */
+verifyRouter.post('/decompile', wasmUpload.single('wasm'), async (req: Request, res: Response) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'No Wasm file uploaded. Use multipart field name "wasm".' });
+    return;
+  }
+
+  let wasmBytes: Buffer;
+  try {
+    const fs = await import('fs');
+    wasmBytes = await fs.promises.readFile(req.file.path);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to read uploaded file', detail: String(err) });
+    return;
+  } finally {
+    // Best-effort cleanup of temp file
+    import('fs').then((fs) => fs.promises.unlink(req.file!.path).catch(() => {}));
+  }
+
+  let result;
+  try {
+    result = decompileWasm(wasmBytes);
+  } catch (err: any) {
+    res.status(422).json({ error: 'Failed to decompile Wasm binary', detail: err.message ?? String(err) });
+    return;
+  }
+
+  res.json({
+    totalOpcodes: result.opcodeIndex.totalOpcodes,
+    distinctOpcodes: result.opcodeIndex.distinctOpcodes,
+    opcodeFrequency: result.opcodeIndex.frequency,
+    hasVulnerabilities: result.hasVulnerabilities,
+    vulnerabilities: result.vulnerabilities,
+    warningMessage: result.warningMessage,
+  });
+});

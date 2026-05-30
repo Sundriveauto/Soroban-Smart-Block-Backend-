@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { detectSpikes } from '../indexer/spikeDetector';
 import { detectFlashLoans } from '../indexer/flashLoanDetector';
+import { DRAIN_EXPLOIT_WARNING } from '../indexer/reentrancy-detector';
 import { prismaRead as prisma } from '../db';
 
 /**
@@ -154,7 +155,10 @@ alertsRouter.get('/reentrancy', async (req: Request, res: Response) => {
     take: limit,
   });
 
-  res.json({ alerts });
+  // Attach the canonical warning label to every alert for API consumers
+  const annotated = alerts.map((a) => ({ ...a, warningLabel: DRAIN_EXPLOIT_WARNING }));
+
+  res.json({ alerts: annotated });
 });
 
 /**

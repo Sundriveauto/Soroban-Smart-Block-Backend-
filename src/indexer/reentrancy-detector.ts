@@ -9,6 +9,10 @@ const REPEATED_CALL_THRESHOLD = 2; // same withdraw target seen ≥ this many ti
 const DEPTH_THRESHOLD = 4;         // call chain depth ≥ this is suspicious
 const HIGH_SEVERITY_REPEATS = 4;   // repeated calls ≥ this → high severity
 
+/** Warning label applied to every detected drain/re-entrancy signal. */
+export const DRAIN_EXPLOIT_WARNING =
+  'Potential Smart Contract Drain Exploit Pattern Detected';
+
 export interface ReentrancySignal {
   transactionHash: string;
   contractAddress: string;
@@ -18,6 +22,8 @@ export interface ReentrancySignal {
   cyclicCallPairs: [string, string][];
   severity: 'low' | 'medium' | 'high';
   signals: string[];
+  /** Human-readable warning label surfaced to API consumers. */
+  warningLabel: string;
 }
 
 /**
@@ -105,13 +111,20 @@ export function analyseCallTrace(
     cyclicCallPairs: cyclicPairs,
     severity,
     signals,
+    warningLabel: DRAIN_EXPLOIT_WARNING,
   };
 }
 
 /**
  * Persist a detected signal and mark the transaction.
+ * The `warningLabel` is appended to `signals` so it is visible in stored records.
  */
 export async function storeReentrancyAlert(signal: ReentrancySignal): Promise<void> {
+  // Ensure the warning label is always the last entry in the stored signals list
+  const storedSignals = signal.signals.includes(signal.warningLabel)
+    ? signal.signals
+    : [...signal.signals, signal.warningLabel];
+
   await prisma.$transaction([
     prisma.reentrancyAlert.upsert({
       where: { transactionHash: signal.transactionHash },
@@ -120,7 +133,7 @@ export async function storeReentrancyAlert(signal: ReentrancySignal): Promise<vo
         maxCallDepth: signal.maxCallDepth,
         cyclicCallPairs: signal.cyclicCallPairs as object[],
         severity: signal.severity,
-        signals: signal.signals,
+        signals: storedSignals,
       },
       create: {
         transactionHash: signal.transactionHash,
@@ -130,7 +143,7 @@ export async function storeReentrancyAlert(signal: ReentrancySignal): Promise<vo
         maxCallDepth: signal.maxCallDepth,
         cyclicCallPairs: signal.cyclicCallPairs as object[],
         severity: signal.severity,
-        signals: signal.signals,
+        signals: storedSignals,
       },
     }),
     prisma.transaction.update({

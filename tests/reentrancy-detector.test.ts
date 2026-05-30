@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { analyseCallTrace } from '../src/indexer/reentrancy-detector';
+import { analyseCallTrace, DRAIN_EXPLOIT_WARNING } from '../src/indexer/reentrancy-detector';
 import { type CallTrace, type CallTraceNode } from '../src/indexer/call-trace';
 
 const TX = 'abc123';
@@ -109,5 +109,29 @@ describe('analyseCallTrace', () => {
     ]);
     const signal = analyseCallTrace(TX, CONTRACT, LEDGER, trace);
     expect(signal!.severity).toBe('low');
+  });
+
+  it('attaches the canonical drain exploit warning label to every signal', () => {
+    const trace = makeTrace([
+      { topic: 'withdraw', contractId: CONTRACT, depth: 1 },
+      { topic: 'withdraw', contractId: CONTRACT, depth: 1 },
+      { topic: 'withdraw', contractId: CONTRACT, depth: 1 },
+    ]);
+    const signal = analyseCallTrace(TX, CONTRACT, LEDGER, trace);
+    expect(signal).not.toBeNull();
+    expect(signal!.warningLabel).toBe(DRAIN_EXPLOIT_WARNING);
+    expect(signal!.warningLabel).toBe('Potential Smart Contract Drain Exploit Pattern Detected');
+  });
+
+  it('warning label is present on cyclic call detection', () => {
+    const A = CONTRACT;
+    const B = 'CBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+    const trace = makeTrace([
+      { topic: 'fn_call', contractId: A, depth: 0 },
+      { topic: 'fn_call', contractId: B, depth: 1 },
+      { topic: 'fn_call', contractId: A, depth: 2 },
+    ]);
+    const signal = analyseCallTrace(TX, CONTRACT, LEDGER, trace);
+    expect(signal!.warningLabel).toBe(DRAIN_EXPLOIT_WARNING);
   });
 });

@@ -21,7 +21,7 @@ import { webhooksRouter } from './webhooks';
 import { analyticsRouter } from './analytics';
 import { portfolioRouter } from './portfolio';
 import { exportsRouter } from './exports';
-import { freezeRouter } from './freeze';
+import { syncStateRouter } from './sync-state';
 
 export const router = Router();
 
@@ -47,4 +47,4 @@ router.use('/webhooks', webhooksRouter);
 router.use('/analytics', analyticsRouter);
 router.use('/portfolio', portfolioRouter);
 router.use('/exports', exportsRouter);
-router.use('/freeze', freezeRouter);
+router.use('/sync-state', syncStateRouter);

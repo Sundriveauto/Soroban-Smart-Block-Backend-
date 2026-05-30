@@ -594,34 +594,22 @@ model VolumeAlert {
   @@index([zScore])
 }
 
-// CAP-0077: Consensus-driven frozen ledger keys
-model FrozenLedgerKey {
+// #168: Account activation records for XLM SAC transfers to unfunded addresses
+model AccountActivation {
   id              String   @id @default(cuid())
-  ledgerKey       String   @unique  // base64 XDR of the LedgerKey quarantined by validators
-  contractAddress String?           // extracted contract address (if contractData/contractCode key)
-  frozenAtLedger  Int               // ledger sequence when freeze was detected
-  frozenAtTime    DateTime          // ledger close time of freeze
-  reason          String?           // optional human-readable reason from validator vote
-  active          Boolean  @default(true)  // false = thawed / lifted
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  @@index([contractAddress])
-  @@index([active])
-  @@index([frozenAtLedger])
-}
-
-// Transactions that touched a consensus-frozen ledger key
-model FreezeViolation {
-  id              String   @id @default(cuid())
-  transactionHash String   @unique
-  contractAddress String?
+  destination     String                        // G-address of the recipient
+  sacAddress      String                        // C-address of the XLM SAC contract
+  transactionHash String                        // originating transaction
   ledgerSequence  Int
   ledgerCloseTime DateTime
-  frozenKeys      Json     // array of ledgerKey strings that were touched
+  amountStroops   String                        // transfer amount in stroops (i128 as string)
+  previousStatus  String   @default("Unfunded Key")
+  newStatus       String   @default("Active Base Wallet Natively Initialized")
   createdAt       DateTime @default(now())
 
-  @@index([contractAddress])
+  @@unique([transactionHash, destination])
+  @@index([destination])
+  @@index([sacAddress])
   @@index([ledgerSequence])
 }
 

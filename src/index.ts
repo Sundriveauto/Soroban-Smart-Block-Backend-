@@ -23,6 +23,7 @@ import { cacheConnect } from './cache';
 import { startGasAnalyticsScheduler } from './indexer/gasAnalytics';
 import { startPortfolioScanner } from './indexer/portfolioScanner';
 import { startVolumeAlertScheduler } from './indexer/volumeAlertRunner';
+import { startSystemicMonitor } from './indexer/systemicMonitor';
 
 const app = express();
 
@@ -72,6 +73,7 @@ async function main() {
     startGasAnalyticsScheduler();
     startPortfolioScanner();
     startVolumeAlertScheduler();
+    startSystemicMonitor();
   }
 
   const httpServer = createServer(app);

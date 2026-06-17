@@ -1437,3 +1437,157 @@ model NetworkAlert {
   @@index([acknowledged])
   @@index([createdAt])
 }
+
+// ─── Emergency Response Platform ─────────────────────────────────────────────
+
+model EmergencyState {
+  id                       String    @id @default(cuid())
+  contractAddress          String    @unique @map("contract_address")
+  isPaused                 Boolean   @default(false) @map("is_paused")
+  currentPauseId           String?   @map("current_pause_id")
+  totalPauseCount          Int       @default(0) @map("total_pause_count")
+  totalPausedSeconds       BigInt    @default(0) @map("total_paused_seconds")
+  lastPauseDurationSeconds BigInt?   @map("last_pause_duration_seconds")
+  pauserType               String?   @map("pauser_type")
+  decentralizationScore    Decimal?  @map("decentralization_score") @db.Decimal(5, 2)
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  @@index([contractAddress])
+  @@map("emergency_states")
+}
+
+model PauseEvent {
+  id              String    @id @default(cuid())
+  contractAddress String    @map("contract_address")
+  eventType       String    @map("event_type")
+  pauserAddress   String?   @map("pauser_address")
+  reason          String?
+  txHash          String    @map("tx_hash")
+  blockNumber     BigInt    @map("block_number")
+  timestamp       DateTime
+  durationSeconds BigInt?   @map("duration_seconds")
+  gasCost         BigInt?   @map("gas_cost")
+  metadata        Json?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  incidentReports IncidentReport[]
+
+  @@index([contractAddress])
+  @@index([eventType])
+  @@index([timestamp])
+  @@index([pauserAddress])
+  @@map("pause_events")
+}
+
+model PauserAnalysis {
+  id                    String    @id @default(cuid())
+  contractAddress       String    @unique @map("contract_address")
+  pauserType            String    @map("pauser_type")
+  pauserAddresses       String[]  @map("pauser_addresses")
+  unpauserAddresses     String[]  @map("unpauser_addresses")
+  threshold             Int?
+  totalSigners          Int?      @map("total_signers")
+  timelockDelaySeconds  BigInt?   @map("timelock_delay_seconds")
+  governanceContract    String?   @map("governance_contract")
+  automaticTriggers     Json?     @map("automatic_triggers")
+  analysisMethod        String?   @map("analysis_method")
+  lastAnalyzed          DateTime  @default(now()) @map("last_analyzed")
+
+  @@map("pauser_analyses")
+}
+
+model RecoveryAnalysis {
+  id                      String    @id @default(cuid())
+  contractAddress         String    @unique @map("contract_address")
+  hasFundRecovery         Boolean   @default(false) @map("has_fund_recovery")
+  fundRecoveryFunctions   String[]  @map("fund_recovery_functions")
+  hasUpgradeCapability    Boolean   @default(false) @map("has_upgrade_capability")
+  upgradeFunctions        String[]  @map("upgrade_functions")
+  hasMigrationCapability  Boolean   @default(false) @map("has_migration_capability")
+  migrationFunctions      String[]  @map("migration_functions")
+  hasStateRollback        Boolean   @default(false) @map("has_state_rollback")
+  rollbackFunctions       String[]  @map("rollback_functions")
+  recoveryRobustnessScore Decimal?  @map("recovery_robustness_score") @db.Decimal(5, 2)
+  analysisDetails         Json?     @map("analysis_details")
+  lastAnalyzed            DateTime  @default(now()) @map("last_analyzed")
+
+  @@map("recovery_analyses")
+}
+
+model AlertConfiguration {
+  id              String    @id @default(cuid())
+  userId          String    @map("user_id")
+  contractAddress String?   @map("contract_address")
+  name            String?
+  alertType       String    @map("alert_type")
+  conditions      Json?
+  channels        Json
+  isActive        Boolean   @default(true) @map("is_active")
+  cooldownMinutes Int       @default(60) @map("cooldown_minutes")
+  lastTriggeredAt DateTime? @map("last_triggered_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([contractAddress])
+  @@map("alert_configurations")
+}
+
+model IncidentReport {
+  id                   String    @id @default(cuid())
+  contractAddress      String    @map("contract_address")
+  severity             String
+  status               String    @default("open")
+  pauseEventId         String?   @map("pause_event_id")
+  title                String
+  description          String?
+  timeline             Json?
+  affectedUsersEstimate BigInt?  @map("affected_users_estimate")
+  affectedTvlEstimate  Decimal?  @map("affected_tvl_estimate") @db.Decimal(30, 0)
+  rootCause            String?   @map("root_cause")
+  resolutionNotes      String?   @map("resolution_notes")
+  resolvedAt           DateTime? @map("resolved_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  pauseEvent PauseEvent? @relation(fields: [pauseEventId], references: [id])
+  comments   IncidentComment[]
+
+  @@index([contractAddress])
+  @@index([status])
+  @@index([severity])
+  @@index([createdAt])
+  @@map("incident_reports")
+}
+
+model IncidentComment {
+  id         String   @id @default(cuid())
+  incidentId String   @map("incident_id")
+  author     String
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  incident IncidentReport @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@index([incidentId])
+  @@map("incident_comments")
+}
+
+model ProtocolHealthScore {
+  id                  String    @id @default(cuid())
+  contractAddress     String    @unique @map("contract_address")
+  protocolName        String?   @map("protocol_name")
+  totalPauses30d      Int       @default(0) @map("total_pauses_30d")
+  totalPauses90d      Int       @default(0) @map("total_pauses_90d")
+  avgPauseDuration30d BigInt?   @map("avg_pause_duration_30d")
+  totalDowntime30d    BigInt?   @map("total_downtime_30d")
+  lastPauseDate       DateTime? @map("last_pause_date")
+  recoveryScore       Decimal?  @map("recovery_score") @db.Decimal(5, 2)
+  decentralizationScore Decimal? @map("decentralization_score") @db.Decimal(5, 2)
+  healthScore         Decimal?  @map("health_score") @db.Decimal(5, 2)
+  riskLevel           String?   @map("risk_level")
+  computedAt          DateTime  @default(now()) @map("computed_at")
+
+  @@index([healthScore])
+  @@map("protocol_health_scores")
+}

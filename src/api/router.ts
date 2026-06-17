@@ -32,6 +32,7 @@ import { governanceRouter } from './governance';
 import { systemicRouter } from './systemic';
 import { benchmarkRouter } from './benchmarks';
 import { networkRouter } from './network';
+import { emergencyBaseRouter } from './emergency-router';
 
 export const router = Router();
 
@@ -67,3 +68,4 @@ router.use('/governance', governanceRouter);
 router.use('/systemic', systemicRouter);
 router.use('/benchmarks', benchmarkRouter);
 router.use('/network', networkRouter);
+router.use('/emergency', emergencyBaseRouter);

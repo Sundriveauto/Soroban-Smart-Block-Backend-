@@ -225,6 +225,17 @@ const options: swaggerJsdoc.Options = {
             updatedAt: { type: 'string', format: 'date-time', example: '2026-06-19T07:24:26.000Z' },
           },
         },
+        // Token summary: the token-specific fields of a Contract, as returned by
+        // GET /tokens. Field types follow the Contract model in prisma/schema.prisma.
+        Token: {
+          type: 'object',
+          properties: {
+            address: { type: 'string', example: 'CALLD5GHXR4QSTKHSWQEK4UVMHM4QHU4KZ5G4SBKWY7C7TXKZ45RJ4M5' },
+            tokenName: { type: 'string', nullable: true, example: 'USD Coin' },
+            tokenSymbol: { type: 'string', nullable: true, example: 'USDC' },
+            tokenDecimals: { type: 'integer', nullable: true, example: 7 },
+          },
+        },
         // Soroban simulation execution trace (TraceResult from trace-engine.ts).
         SimulationTrace: {
           type: 'object',

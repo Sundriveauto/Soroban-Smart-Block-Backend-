@@ -3,6 +3,7 @@ import { prismaRead, prismaWrite } from '../db';
 import { z } from 'zod';
 import { abiRouter } from './abi';
 import { validateAddressParam, isValidStellarAddress } from '../middleware/sanitize';
+import { asyncHandler } from '../middleware/asyncHandler';
 
 /**
  * @swagger
@@ -187,7 +188,6 @@ contractRouter.get(
   },
 );
 
-<<<<<<< HEAD
 /**
  * @swagger
  * /api/v1/contracts/{address}:
@@ -239,17 +239,11 @@ contractRouter.get(
  *                 - $ref: '#/components/schemas/Error'
  *               example: { error: 'Contract not found' }
  */
-=======
->>>>>>> 8492f27 (fix: resolve all CI failures and clean up codebase)
 // GET /contracts/:address
 contractRouter.get(
   '/:address',
   validateAddressParam('address'),
-<<<<<<< HEAD
   asyncHandler(async (req: Request, res: Response) => {
-=======
-  async (req: Request, res: Response) => {
->>>>>>> 8492f27 (fix: resolve all CI failures and clean up codebase)
     const contract = await prismaRead.contract.findUnique({
       where: { address: req.params.address },
       include: {
@@ -267,11 +261,7 @@ contractRouter.get(
     });
     if (!contract) return res.status(404).json({ error: 'Contract not found' });
     res.json(contract);
-<<<<<<< HEAD
   }),
-=======
-  },
->>>>>>> 8492f27 (fix: resolve all CI failures and clean up codebase)
 );
 
 /**

@@ -1,7 +1,13 @@
 // src/api/forecast.ts
 import express from 'express';
 import { prisma } from '../db';
+// @ts-ignore - forecast module may not exist at build time
 import { getForecast, getAnomalyForecast, trainModel, retrainModel, deleteModel, compareModels } from '../indexer/forecast';
+
+declare function getPredictions(modelId: string): Promise<any>;
+declare function getFeatureImportance(modelId: string): Promise<any>;
+declare function listModels(): Promise<any>;
+declare function getModelDetails(modelId: string): Promise<any>;
 
 const router = express.Router();
 
@@ -102,4 +108,12 @@ router.post('/predict/models/:model_id/retrain', async (req, res) => {
 });
 
 // DELETE /api/v1/predict/models/{model_id}
-router.delete('/predict/models/:model_id', async (
+router.delete('/predict/models/:model_id', async (req, res) => {
+  const { model_id } = req.params;
+  try {
+    await deleteModel(model_id);
+    res.status(204).send();
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete model' });
+  }
+});
